@@ -13,7 +13,6 @@ jobs:
 
       - name: Deploy backend via Docker
         run: |
-          cd docker
           docker build -t multi-tech-backend .
           docker run -d -p 5000:5000 multi-tech-backend
 
