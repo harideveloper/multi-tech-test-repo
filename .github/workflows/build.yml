@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  workflow_dispatch: {}  # manually trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run backend lint/build
+        run: |
+          cd backend
+          python -m compileall .
+
+      - name: Build Docker image
+        run: |
+          cd docker
+          docker build -t multi-tech-backend .

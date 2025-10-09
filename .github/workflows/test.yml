@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  workflow_dispatch: {}  # manually trigger
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      backend:
+        image: multi-tech-backend
+        ports:
+          - 5000:5000
+        options: >-
+          --health-cmd "curl -f http://localhost:5000 || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install requests for health check
+        run: pip install requests
+
+      - name: Run health check
+        run: |
+          echo "Checking backend health..."
+          curl -f http://localhost:5000 || exit 1
+
+      - name: Test frontend exists
+        run: |
+          if [ ! -f frontend/index.html ]; then
+            echo "❌ frontend/index.html missing"
+            exit 1
+          fi
+          echo "✅ frontend/index.html exists"
