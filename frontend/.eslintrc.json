@@ -1,0 +1,8 @@
+{
+  "extends": ["react-app"],
+  "rules": {
+    "no-console": "error",
+    "no-undef": "error",
+    "react/jsx-key": "error"
+  }
+}
