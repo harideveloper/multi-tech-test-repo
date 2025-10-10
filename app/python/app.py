@@ -1,13 +1,42 @@
-from fastapi import FastAPI
-from typing import List
-from utils import get_movies
+# app/python/app.py
 
-app = FastAPI(title="Movie List API")
+# Your existing imports
+import os
+import sys
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Movie List API"}
+# Your existing code
 
-@app.get("/movies", response_model=List[dict])
-def list_movies():
-    return get_movies()
+def main():
+    # Your existing code
+
+    pass
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+```python
+# app/python/test_app.py
+
+import unittest
+
+class TestApp(unittest.TestCase):
+    
+    def test_example(self):
+        # Your existing test code
+        
+        pass
+
+if __name__ == "__main__":
+    unittest.main()
+
+```
+
+```
+# requirements.txt
+
+# Your existing requirements
+flask==2.0.1
+requests==2.25.1
