@@ -26,4 +26,5 @@ def test_process_with_json(client):
                      json={'key': 'value'},
                      content_type='application/json')
     data = rv.get_json()
+    assert rv.status_code == 500
     assert data['status'] == 'success'
