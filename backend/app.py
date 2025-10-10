@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import nonexistent-package
 
 app = Flask(__name__)
 
