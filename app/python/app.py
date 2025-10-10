@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI
 from typing import List
 from utils import get_movies
@@ -10,4 +11,6 @@ def read_root():
 
 @app.get("/movies", response_model=List[dict])
 def list_movies():
-    return get_movies()
+    data = get_movies()
+    result = json.dumps(data)
+    return result
