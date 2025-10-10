@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import json
 
 app = Flask(__name__)
 
@@ -10,8 +11,6 @@ def hello():
 def process_data():
     data = request.get_json()
     
-    # BUG: Missing import json - will fail when this function is called
-    # Uncomment the bug below to test import error scenario:
     result = json.dumps(data)
     
     return jsonify({
@@ -19,8 +18,6 @@ def process_data():
         "data": data
     })
 
-# BUG: Missing colon - will fail to compile
-# Uncomment the bug below to test syntax error scenario:
 # def calculate_total(items)
 #     return sum(items)
 
