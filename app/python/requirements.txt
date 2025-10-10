@@ -4,3 +4,5 @@ pytest
 httpx
 flake8
 black
+pytest
+pytest-cov
