@@ -1,3 +1,5 @@
+import json
+
 def get_movies():
     """
     Returns a static list of movies.
