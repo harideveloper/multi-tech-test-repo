@@ -12,7 +12,7 @@ def process_data():
     
     # BUG: Missing import json - will fail when this function is called
     # Uncomment the bug below to test import error scenario:
-    # result = json.dumps(data)
+    result = json.dumps(data)
     
     return jsonify({
         "status": "success",
