@@ -20,29 +20,30 @@ jobs:
 
       # Step 3: Install backend dependencies
       - name: Install dependencies
-        working-directory: app
+        working-directory: app/python
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       # Step 4: Lint backend code
       - name: Run linters
-        working-directory: app
+        working-directory: app/python
         run: |
           flake8 .
           black --check .
 
       # Step 5: Run unit tests
       - name: Run unit tests
-        working-directory: app
+        working-directory: app/python
         run: |
           pytest tests --cov=.
 
       # Step 6: Compile Python files
       - name: Compile backend
-        working-directory: app
+        working-directory: app/python
         run: python -m compileall .
 
       # Step 7: Build Docker image
       - name: Build Docker image
-        run: docker build -f app/dockerfile -t multi-tech-backend .
+        working-directory: app/python
+        run: docker build -f ../dockerfile -t multi-tech-backend .
