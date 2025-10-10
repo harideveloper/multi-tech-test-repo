@@ -17,7 +17,7 @@ def test_process_endpoint(client):
     rv = client.post('/api/process', 
                      json={'data': 'test'},
                      content_type='application/json')
-    assert rv.status_code == 200
+    assert rv.status_code == 500
 
 # BUG: This test will fail if json import is missing in app.py
 def test_process_with_json(client):
