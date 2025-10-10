@@ -25,5 +25,6 @@ def test_process_with_json(client):
     rv = client.post('/api/process',
                      json={'key': 'value'},
                      content_type='application/json')
+    assert rv.status_code == 200  # Updated assertion
     data = rv.get_json()
     assert data['status'] == 'success'
