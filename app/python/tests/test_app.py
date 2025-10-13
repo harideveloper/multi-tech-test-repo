@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
-from app import main
+from app.main import app
 
-client = TestClient(main.app)
+client = TestClient(app)
 
 def test_list_movies():
     response = client.get("/movies")
