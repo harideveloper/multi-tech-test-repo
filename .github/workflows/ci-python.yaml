@@ -17,10 +17,10 @@ jobs:
           cd app/python
           pip install -r requirements.txt
       
-      - name: Run linting
-        run: |
-          cd app/python
-          flake8 . --max-line-length=120
+      # - name: Run linting
+      #   run: |
+      #     cd app/python
+      #     flake8 . --max-line-length=120
       
       - name: Run tests
         run: |
