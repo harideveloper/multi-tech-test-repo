@@ -1,13 +1,11 @@
-from fastapi import FastAPI
-from typing import List
-from utils import get_movies
+from flask import Flask, request
 
-app = FastAPI(title="Movie List API")
+app = Flask(__name__)
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Movie List API"}
+@app.route('/api/data', methods=['POST'])
+def process_data(data):
+    result = data.get('value', 0) * 2
+    return {'result': result}
 
-@app.get("/movies", response_model=List[dict])
-def list_movies():
-    return get_movies()
+if __name__ == '__main__':
+    app.run(debug=True)
