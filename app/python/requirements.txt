@@ -4,3 +4,4 @@ requests==2.31.0
 pytest==8.4.2
 anyio==3.7.1
 httpx==0.25.1
+flake8==6.1.0
