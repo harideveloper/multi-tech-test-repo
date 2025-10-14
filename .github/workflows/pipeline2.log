@@ -1,0 +1,62 @@
+Run actions/checkout@v3
+Checked out branch main
+
+## BACKEND JOB ##
+Run actions/setup-node@v3
+Node.js 18 installed successfully
+Run npm ci
+added 225 packages in 6s
+Run npm test -- --passWithNoTests
+> backend@1.0.0 test
+> jest
+
+ PASS  tests/utils.test.js
+ FAIL  tests/service.test.js
+  ● Service › should return correct data
+    expect(received).toBe(expected)
+    Expected: 200
+    Received: 500
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       3 failed, 10 passed, 13 total
+Snapshots:   0 total
+Time:        3.87 s
+Ran all test suites.
+Error: Process completed with exit code 1.
+
+Run docker build -t myapp-backend:latest ./backend
+Sending build context to Docker daemon  16.2MB
+Step 1/6 : FROM node:18-alpine
+ ---> 123abc456
+Step 2/6 : WORKDIR /app
+ ---> Using cache
+ ---> 456def789
+Step 3/6 : COPY package*.json ./
+ ---> Using cache
+Step 4/6 : RUN npm ci --only=production
+ ---> Running in container
+added 212 packages
+Successfully built myapp-backend:latest
+
+## FRONTEND JOB ##
+Run npm ci
+added 982 packages in 11s
+Run npm run build
+> frontend@1.0.0 build
+> react-scripts build
+Creating an optimized production build...
+Compiled with warnings.
+
+src/App.js
+  Line 10:6:  React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.
+
+File sizes after gzip:
+  256.31 kB  build/static/js/main.a1b2c3d4.js
+  40.98 kB   build/static/css/main.1234abcd.css
+
+The project was built assuming it is hosted at /.
+Use 'homepage' field in package.json to set the correct URL.
+
+## DEPLOY JOB ##
+Run echo "Deploying to production..."
+Deploying to production...
