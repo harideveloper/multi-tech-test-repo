@@ -41,16 +41,30 @@ jobs:
         run: |
           docker build -t myapp:latest .
 
+      - name: Upload code artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: code
+          path: .
+
   lint:
     runs-on: ubuntu-latest
+    needs: build
     steps:
+      - name: Download code artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: code
+
       - name: Install linters
         run: pip install flake8 black
+
       - name: Run linters
         run: flake8 . && black --check .
 
   deploy:
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Deploy to staging
         run: echo "Deploying to staging server..."
