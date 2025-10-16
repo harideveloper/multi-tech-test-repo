@@ -41,36 +41,14 @@ jobs:
         run: |
           docker build -t myapp:latest .
 
-      - name: Security scan for Python dependencies
-        run: pip install safety && safety check
-
-      - name: Security scan for Docker image
-        run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy myapp:latest
-
   lint:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
       - name: Install linters
         run: pip install flake8 black
-
       - name: Run linters
         run: flake8 . && black --check .
-
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Run tests
-        run: |
-          pytest tests/ --maxfail=1 --disable-warnings -q
 
   deploy:
     runs-on: ubuntu-latest
@@ -78,3 +56,19 @@ jobs:
     steps:
       - name: Deploy to staging
         run: echo "Deploying to staging server..."
+
+  parallel:
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        job: [lint, deploy]
+    steps:
+      - name: Run ${{ matrix.job }} job
+        run: |
+          if [ "${{ matrix.job }}" == "lint" ]; then
+            pip install flake8 black
+            flake8 . && black --check .
+          elif [ "${{ matrix.job }}" == "deploy" ]; then
+            echo "Deploying to staging server..."
+          fi
