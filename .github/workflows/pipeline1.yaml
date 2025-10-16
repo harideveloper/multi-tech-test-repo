@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Cache pip dependencies
+      - name: Cache Python dependencies
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
@@ -33,19 +33,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install linters
-        run: pip install flake8 black
-
       - name: Run tests
         run: |
           pytest tests/ --maxfail=1 --disable-warnings -q
 
-      - name: Run linters
-        run: flake8 . && black --check .
-
       - name: Build Docker image
         run: |
           docker build -t myapp:latest .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install linters
+        run: pip install -r requirements.txt
+
+      - name: Run linters
+        run: flake8 . && black --check .
 
   deploy:
     runs-on: ubuntu-latest
