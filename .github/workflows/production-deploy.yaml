@@ -1,0 +1,59 @@
+name: Production Deployment
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test & npm run lint
+      
+      - name: Build production
+        run: npm run build:prod
+        env:
+          NODE_ENV: production
+  
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+      
+      - name: Deploy to production
+        run: |
+          aws s3 sync dist/ s3://prod-bucket/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CF_DIST }}
+      
+      - name: Run smoke tests
+        run: |
+          curl -f https://production.example.com/health || exit 1
+          echo "Production deployment successful"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Deployment failed!"}' ${{ secrets.SLACK_WEBHOOK }}
