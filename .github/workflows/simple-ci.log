@@ -1,0 +1,22 @@
+Run actions/checkout@v4
+Syncing repository: myorg/myrepo
+Successfully checked out ref refs/heads/feature/new-feature
+
+Run actions/setup-node@v4
+Setup Node.js version 20
+Node.js version 20.10.0 installed
+
+Run npm ci
+npm WARN deprecated package@1.0.0
+added 245 packages in 12s
+
+Run npm test
+PASS src/utils.test.js
+PASS src/app.test.js
+Test Suites: 2 passed, 2 total
+Tests: 15 passed, 15 total
+Time: 3.245s
+
+Run npm run lint
+✓ All files pass linting
+No issues found

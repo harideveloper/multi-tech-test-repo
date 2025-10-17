@@ -1,0 +1,34 @@
+Run actions/checkout@v4
+Fetching tag: v2.1.0
+Successfully checked out tag v2.1.0
+
+Run actions/setup-node@v4
+Node.js 20.10.0 installed
+Registry configured: https://registry.npmjs.org
+
+Run npm ci
+added 312 packages in 18s
+
+Run npm run test:all
+Running comprehensive test suite...
+PASS unit tests (125/125)
+PASS integration tests (45/45)
+PASS e2e tests (12/12)
+✓ All tests passed
+
+Run npm run build
+Building package for publication...
+✓ Build completed: lib/ directory
+
+Run npx conventional-changelog
+Generating changelog from commits...
+✓ CHANGELOG.md updated with v2.1.0 changes
+
+Run npm publish --access public
+Publishing mypackage@2.1.0...
+✓ Package published successfully
+View at: https://www.npmjs.com/package/mypackage/v/2.1.0
+
+Run actions/create-release@v1
+Creating GitHub release for v2.1.0...
+✓ Release created: https://github.com/myorg/myrepo/releases/tag/v2.1.0

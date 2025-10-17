@@ -1,0 +1,22 @@
+name: Documentation CI
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'README.md'
+
+jobs:
+  lint-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Lint markdown
+        run: npx markdownlint '**/*.md'
+      
+      - name: Check spelling
+        run: npx cspell '**/*.md'
+      
+      - name: Validate links
+        run: npx markdown-link-check README.md

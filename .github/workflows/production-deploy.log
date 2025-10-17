@@ -1,0 +1,37 @@
+Run actions/checkout@v4
+Checked out main branch (commit: f5e6d7c8)
+
+Run actions/setup-node@v4
+Node.js 20.10.0 installed
+
+Run npm ci
+added 312 packages in 15s
+
+Run npm test
+Running production test suite...
+PASS src/**/*.test.js
+Test Suites: 25 passed, 25 total
+Tests: 156 passed, 156 total
+
+Run npm run build:prod
+Building production bundle with optimizations...
+Minifying JavaScript...
+Optimizing assets...
+✓ Production build complete: 1.8 MB
+
+Run aws-actions/configure-aws-credentials@v4
+Configuring AWS credentials for production
+✓ Assumed role: arn:aws:iam::123456789:role/GitHubActions
+
+Run Deploy to production
+Syncing files to s3://prod-bucket/
+upload: dist/index.html to s3://prod-bucket/index.html
+upload: dist/assets/main.js to s3://prod-bucket/assets/main.js
+✓ 45 files uploaded
+Creating CloudFront invalidation...
+✓ Invalidation created: I2EXAMPLE
+
+Run smoke tests
+Checking production health endpoint...
+✓ https://production.example.com/health returned 200
+Production deployment successful

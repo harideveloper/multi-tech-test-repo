@@ -1,0 +1,14 @@
+Run actions/checkout@v4
+Successfully checked out docs/update-readme branch
+
+Run npx markdownlint '**/*.md'
+Checking 15 markdown files...
+✓ All files pass markdown linting
+
+Run npx cspell '**/*.md'
+Checking spelling in documentation...
+✓ No spelling errors found
+
+Run npx markdown-link-check README.md
+Checking links in README.md
+✓ All links are valid (25/25)

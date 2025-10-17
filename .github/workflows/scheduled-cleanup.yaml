@@ -1,0 +1,41 @@
+name: Cleanup Old Artifacts
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Delete old workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              status: 'completed'
+            });
+            
+            const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            const oldRuns = runs.data.workflow_runs.filter(run => 
+              new Date(run.created_at).getTime() < cutoff
+            );
+            
+            for (const run of oldRuns) {
+              await github.rest.actions.deleteWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id
+              });
+            }
+            
+            console.log(`Deleted ${oldRuns.length} old workflow runs`);
+      
+      - name: Clean up old branches
+        run: |
+          git fetch --prune
+          git branch -r --merged | grep -v main | sed 's/origin\///' | xargs -r git push origin --delete
