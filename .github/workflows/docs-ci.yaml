@@ -12,11 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Lint markdown
-        run: npx markdownlint '**/*.md'
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
       
-      - name: Check spelling
-        run: npx cspell '**/*.md'
+      - name: Install dependencies
+        run: npm install
       
-      - name: Validate links
-        run: npx markdown-link-check README.md
+      - name: Lint and check documents
+        run: |
+          npx markdownlint '**/*.md'
+          npx cspell '**/*.md'
+          npx markdown-link-check README.md
