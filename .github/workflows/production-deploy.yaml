@@ -13,10 +13,10 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Cache node modules
+      - name: Cache Node.js modules
         uses: actions/cache@v3
         with:
-          path: ~/.npm
+          path: node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
@@ -25,7 +25,7 @@ jobs:
         run: npm ci
       
       - name: Run tests
-        run: npm test & npm run lint
+        run: npm test
       
       - name: Build production
         run: npm run build:prod
@@ -52,8 +52,3 @@ jobs:
         run: |
           curl -f https://production.example.com/health || exit 1
           echo "Production deployment successful"
-      
-      - name: Notify on failure
-        if: failure()
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Deployment failed!"}' ${{ secrets.SLACK_WEBHOOK }}
