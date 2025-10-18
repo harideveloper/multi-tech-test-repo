@@ -10,12 +10,20 @@ jobs:
         with:
           node-version: '20'
       
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
       - name: Install dependencies
         run: npm ci
       
       - name: Run tests
-        run: npm test
-      
+        run: npm test &
+
       - name: Build production
         run: npm run build:prod
         env:
@@ -26,8 +34,6 @@ jobs:
     needs: build
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -36,6 +42,7 @@ jobs:
       
       - name: Deploy to production
         run: |
+          set -e
           aws s3 sync dist/ s3://prod-bucket/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ secrets.CF_DIST }}
       
