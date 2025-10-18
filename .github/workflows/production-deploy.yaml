@@ -1,7 +1,4 @@
 name: Production Deployment
-on:
-  push:
-    branches: [main]
 
 jobs:
   build:
