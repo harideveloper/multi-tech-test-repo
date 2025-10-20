@@ -12,6 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
+      - name: Install dependencies
+        run: npm install
+      
       - name: Lint markdown
         run: npx markdownlint '**/*.md'
       
@@ -20,3 +31,14 @@ jobs:
       
       - name: Validate links
         run: npx markdown-link-check README.md
+
+    outputs:
+      lint-status: ${{ job.status }}
+      
+  notify:
+    runs-on: ubuntu-latest
+    needs: lint-docs
+    if: needs.lint-docs.outputs.lint-status == 'failure'
+    steps:
+      - name: Notify failure
+        run: echo "Linting or validation failed. Sending notification..." # Replace with actual notification command
