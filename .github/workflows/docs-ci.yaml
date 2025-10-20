@@ -9,14 +9,27 @@ on:
 jobs:
   lint-docs:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        linting: [markdownlint, cspell, markdown-link-check]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.0.0
       
-      - name: Lint markdown
-        run: npx markdownlint '**/*.md'
+      - name: Cache npm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
       
-      - name: Check spelling
-        run: npx cspell '**/*.md'
-      
-      - name: Validate links
-        run: npx markdown-link-check README.md
+      - name: Run linting
+        run: |
+          if [ "${{ matrix.linting }}" == "markdownlint" ]; then
+            npx markdownlint '**/*.md'
+          elif [ "${{ matrix.linting }}" == "cspell" ]; then
+            npx cspell '**/*.md'
+          elif [ "${{ matrix.linting }}" == "markdown-link-check" ]; then
+            npx markdown-link-check README.md
+          fi
+        continue-on-error: false
