@@ -12,11 +12,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Lint markdown
-        run: npx markdownlint '**/*.md'
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm install
+
+  lint-markdown:
+    runs-on: ubuntu-latest
+    needs: lint-docs
+    strategy:
+      matrix:
+        linting: [markdownlint, cspell, markdown-link-check]
+    steps:
+      - uses: actions/checkout@v4
       
-      - name: Check spelling
-        run: npx cspell '**/*.md'
-      
-      - name: Validate links
-        run: npx markdown-link-check README.md
+      - name: Run linting
+        run: |
+          set -e
+          if [ "${{ matrix.linting }}" == "markdownlint" ]; then
+            npx markdownlint '**/*.md'
+          elif [ "${{ matrix.linting }}" == "cspell" ]; then
+            npx cspell '**/*.md'
+          elif [ "${{ matrix.linting }}" == "markdown-link-check" ]; then
+            npx markdown-link-check README.md
+          fi
