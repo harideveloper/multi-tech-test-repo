@@ -1,22 +1,53 @@
-name: Documentation CI
-on:
-  pull_request:
-    paths:
-      - 'docs/**'
-      - '*.md'
-      - 'README.md'
-
 jobs:
-  lint-docs:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Lint markdown
-        run: npx markdownlint '**/*.md'
-      
-      - name: Check spelling
-        run: npx cspell '**/*.md'
-      
-      - name: Validate links
-        run: npx markdown-link-check README.md
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run linter
+        run: npm run lint
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run validation
+        run: npm run validate
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, validate]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
