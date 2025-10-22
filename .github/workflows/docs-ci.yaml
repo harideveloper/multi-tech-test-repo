@@ -1,22 +1,37 @@
-name: Documentation CI
+name: CI/CD Pipeline
+
 on:
-  pull_request:
-    paths:
-      - 'docs/**'
-      - '*.md'
-      - 'README.md'
+  push:
+    branches:
+      - main
 
 jobs:
-  lint-docs:
+  lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tool: [markdownlint, cspell, markdown-link-check]
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Lint markdown
-        run: npx markdownlint '**/*.md'
-      
-      - name: Check spelling
-        run: npx cspell '**/*.md'
-      
-      - name: Validate links
-        run: npx markdown-link-check README.md
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Cache node modules
+        uses: actions/cache@v2
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm install || exit 1
+
+      - name: Run ${{ matrix.tool }}
+        run: |
+          if [ "${{ matrix.tool }}" == "markdownlint" ]; then
+            markdownlint $MARKDOWN_FILES || exit 1
+          elif [ "${{ matrix.tool }}" == "cspell" ]; then
+            cspell $MARKDOWN_FILES || exit 1
+          elif [ "${{ matrix.tool }}" == "markdown-link-check" ]; then
+            markdown-link-check $MARKDOWN_FILES || exit 1
+          fi
+        env:
+          MARKDOWN_FILES: '**/*.md'
