@@ -3,39 +3,92 @@ on:
   schedule:
     - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
   workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Number of days to retain workflow runs'
+        required: false
+        default: '30'
+        type: string
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
       - name: Delete old workflow runs
         uses: actions/github-script@v7
         with:
           script: |
-            const runs = await github.rest.actions.listWorkflowRunsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              status: 'completed'
-            });
+            const retentionDays = parseInt('${{ github.event.inputs.retention_days || 30 }}');
+            const cutoff = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
             
-            const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
-            const oldRuns = runs.data.workflow_runs.filter(run => 
-              new Date(run.created_at).getTime() < cutoff
-            );
-            
-            for (const run of oldRuns) {
-              await github.rest.actions.deleteWorkflowRun({
+            try {
+              const runs = await github.rest.actions.listWorkflowRunsForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                run_id: run.id
+                status: 'completed'
               });
+              
+              const oldRuns = runs.data.workflow_runs.filter(run => 
+                new Date(run.created_at).getTime() < cutoff
+              );
+              
+              console.log(`Found ${oldRuns.length} old workflow runs to delete`);
+              
+              for (const run of oldRuns) {
+                try {
+                  await github.rest.actions.deleteWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: run.id
+                  });
+                  console.log(`Deleted workflow run ${run.id}`);
+                  // Add small delay to avoid rate limiting
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (error) {
+                  console.error(`Failed to delete workflow run ${run.id}: ${error.message}`);
+                }
+              }
+              
+              console.log(`Cleanup completed`);
+            } catch (error) {
+              console.error(`Failed to fetch workflow runs: ${error.message}`);
+              throw error;
             }
-            
-            console.log(`Deleted ${oldRuns.length} old workflow runs`);
       
       - name: Clean up old branches
         run: |
+          # Fetch latest refs and prune deleted remote branches
           git fetch --prune
-          git branch -r --merged | grep -v main | sed 's/origin\///' | xargs -r git push origin --delete
+          
+          # Get merged branches excluding main, master, develop, and release branches
+          merged_branches=$(git branch -r --merged | 
+            grep -v -E '(main|master|develop|release)' | 
+            grep -v HEAD | 
+            sed 's/origin\///' | 
+            grep -v '^\s*$')
+          
+          if [ -z "$merged_branches" ]; then
+            echo "No old merged branches found to delete"
+            exit 0
+          fi
+          
+          echo "Found merged branches to potentially delete:"
+          echo "$merged_branches"
+          
+          # Only delete branches that are older than 30 days and merged
+          for branch in $merged_branches; do
+            # Check if branch exists on remote
+            if git ls-remote --heads origin "$branch" | grep -q "$branch"; then
+              # Get last commit date of the branch
+              last_commit_date=$(git log -1 --format=%ct "origin/$branch" 2>/dev/null || echo "0")
+              current_date=$(date +%s)
+              days_old=$(( (current_date - last_commit_date) / 86400 ))
+              
+              if [ "$days_old" -gt 30 ]; then
+                echo "Deleting branch '$branch' (${days_old} days old)"
+                git push origin --delete "$branch" || echo "Failed to delete branch '$branch'"
+              else
+                echo "Keeping branch '$branch' (only ${days_old} days old)"
+              fi
+            fi
+          done
