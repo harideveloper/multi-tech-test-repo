@@ -1,0 +1,355 @@
+name: Kubernetes Application Deployment
+
+on:
+  push:
+    branches: [main, release/*]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+env:
+  REGISTRY: gcr.io
+  PROJECT_ID: my-gcp-project
+  CLUSTER_NAME: app-cluster
+  GO_VERSION: '1.21'
+  
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout=5m
+      
+      - name: Run go vet
+        run: go vet ./...
+      
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go code is not formatted:"
+            gofmt -d .
+            exit 1
+          fi
+  
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+      
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gosec.sarif
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+  
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run unit tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Run integration tests
+        run: go test -v -tags=integration ./tests/integration/...
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+  
+  build-and-push:
+    needs: [code-quality, security-scan, test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    outputs:
+      image-tag: ${{ steps.image-tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+      
+      - name: Generate image tag
+        id: image-tag
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TAG="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/app:${SHORT_SHA}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image-tag.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.image-tag.outputs.short_sha }}
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      
+      - name: Scan image with Trivy
+        run: |
+          docker pull ${{ steps.image-tag.outputs.tag }}
+          trivy image --severity HIGH,CRITICAL ${{ steps.image-tag.outputs.tag }}
+  
+  validate-k8s-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+      
+      - name: Validate Kubernetes manifests
+        run: |
+          kubeval --strict k8s/*.yaml
+      
+      - name: Install kubeconform
+        run: |
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin
+      
+      - name: Validate with kubeconform
+        run: |
+          kubeconform -summary k8s/*.yaml
+  
+  deploy-dev:
+    needs: [build-and-push, validate-k8s-manifests]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: dev
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}-dev
+          location: us-central1
+      
+      - name: Update image in manifests
+        run: |
+          sed -i "s|IMAGE_TAG|${{ needs.build-and-push.outputs.image-tag }}|g" k8s/deployment.yaml
+      
+      - name: Deploy to dev
+        run: |
+          kubectl apply -f k8s/ -n dev
+          kubectl rollout status deployment/app -n dev --timeout=5m
+      
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n dev
+          kubectl get svc -n dev
+  
+  deploy-staging:
+    needs: [build-and-push, validate-k8s-manifests]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/heads/release/')
+    environment: staging
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}-staging
+          location: us-central1
+      
+      - name: Update image in manifests
+        run: |
+          sed -i "s|IMAGE_TAG|${{ needs.build-and-push.outputs.image-tag }}|g" k8s/deployment.yaml
+      
+      - name: Deploy to staging
+        run: |
+          kubectl apply -f k8s/ -n staging
+          kubectl rollout status deployment/app -n staging --timeout=10m
+      
+      - name: Run smoke tests
+        run: |
+          export SERVICE_IP=$(kubectl get svc app -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -f http://${SERVICE_IP}/health || exit 1
+          python tests/smoke_tests.py --url http://${SERVICE_IP}
+      
+      - name: Run load tests
+        run: |
+          export SERVICE_IP=$(kubectl get svc app -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          k6 run --vus 10 --duration 30s tests/load_test.js
+        env:
+          K6_PROMETHEUS_REMOTE_URL: ${{ secrets.PROMETHEUS_URL }}
+  
+  deploy-production:
+    needs: [build-and-push, validate-k8s-manifests, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.inputs.environment == 'production'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}-production
+          location: us-central1
+      
+      - name: Create backup of current deployment
+        run: |
+          kubectl get deployment app -n production -o yaml > backup-deployment.yaml
+      
+      - name: Update image in manifests
+        run: |
+          sed -i "s|IMAGE_TAG|${{ needs.build-and-push.outputs.image-tag }}|g" k8s/deployment.yaml
+      
+      - name: Canary deployment (10% traffic)
+        run: |
+          kubectl apply -f k8s/canary-deployment.yaml -n production
+          kubectl rollout status deployment/app-canary -n production --timeout=5m
+      
+      - name: Monitor canary metrics
+        run: |
+          python scripts/monitor_canary.py --duration 300 --error-threshold 1
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+      
+      - name: Full rollout
+        run: |
+          kubectl apply -f k8s/deployment.yaml -n production
+          kubectl rollout status deployment/app -n production --timeout=10m
+      
+      - name: Cleanup canary
+        run: |
+          kubectl delete -f k8s/canary-deployment.yaml -n production
+      
+      - name: Verify production deployment
+        run: |
+          export SERVICE_IP=$(kubectl get svc app -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -f https://${SERVICE_IP}/health || exit 1
+      
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Production deployment completed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": " *Production Deployment Successful*\nImage: ${{ needs.build-and-push.outputs.image-tag }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

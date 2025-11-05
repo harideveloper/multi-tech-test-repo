@@ -1,0 +1,293 @@
+name: Data Pipeline Deployment
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'pipelines/**'
+      - 'dags/**'
+      - 'sql/**'
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
+  workflow_dispatch:
+    inputs:
+      pipeline_name:
+        description: 'Specific pipeline to deploy'
+        required: false
+        type: string
+
+env:
+  PYTHON_VERSION: '3.10'
+  DBT_VERSION: '1.6.0'
+  AIRFLOW_VERSION: '2.7.0'
+
+jobs:
+  validate-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install SQLFluff
+        run: pip install sqlfluff==2.3.0
+      
+      - name: Lint SQL files
+        run: sqlfluff lint sql/ --dialect postgres
+      
+      - name: Check SQL formatting
+        run: sqlfluff format sql/ --dialect postgres --check
+  
+  validate-dbt:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dbt
+        run: |
+          pip install dbt-core==${{ env.DBT_VERSION }}
+          pip install dbt-postgres==1.6.0
+      
+      - name: Install dbt dependencies
+        working-directory: dbt
+        run: dbt deps
+      
+      - name: Compile dbt models
+        working-directory: dbt
+        run: dbt compile --profiles-dir ./profiles
+        env:
+          DBT_POSTGRES_HOST: localhost
+          DBT_POSTGRES_PORT: 5432
+          DBT_POSTGRES_USER: postgres
+          DBT_POSTGRES_PASS: postgres
+          DBT_POSTGRES_DB: testdb
+      
+      - name: Run dbt tests
+        working-directory: dbt
+        run: dbt test --profiles-dir ./profiles
+        env:
+          DBT_POSTGRES_HOST: localhost
+          DBT_POSTGRES_PORT: 5432
+          DBT_POSTGRES_USER: postgres
+          DBT_POSTGRES_PASS: postgres
+          DBT_POSTGRES_DB: testdb
+      
+      - name: Generate dbt docs
+        working-directory: dbt
+        run: dbt docs generate --profiles-dir ./profiles
+        env:
+          DBT_POSTGRES_HOST: localhost
+          DBT_POSTGRES_PORT: 5432
+          DBT_POSTGRES_USER: postgres
+          DBT_POSTGRES_PASS: postgres
+          DBT_POSTGRES_DB: testdb
+      
+      - name: Upload dbt docs
+        uses: actions/upload-artifact@v3
+        with:
+          name: dbt-docs
+          path: dbt/target
+  
+  validate-airflow-dags:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install Airflow
+        run: |
+          pip install apache-airflow==${{ env.AIRFLOW_VERSION }}
+          pip install -r requirements.txt
+      
+      - name: Initialize Airflow database
+        run: |
+          export AIRFLOW_HOME=$(pwd)/airflow
+          airflow db init
+      
+      - name: Validate DAG integrity
+        run: |
+          export AIRFLOW_HOME=$(pwd)/airflow
+          python -m pytest tests/test_dags.py -v
+      
+      - name: Check for DAG import errors
+        run: |
+          export AIRFLOW_HOME=$(pwd)/airflow
+          export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/dags
+          python -c "from airflow.models import DagBag; db = DagBag(); assert len(db.import_errors) == 0, f'DAG import errors: {db.import_errors}'"
+  
+  test-data-quality:
+    needs: [validate-sql, validate-dbt]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install great-expectations==0.17.0
+          pip install pandas psycopg2-binary
+      
+      - name: Load test data
+        run: |
+          python scripts/load_test_data.py
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
+      
+      - name: Run Great Expectations
+        run: |
+          great_expectations checkpoint run data_quality_checkpoint
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
+  
+  deploy-staging:
+    needs: [validate-dbt, validate-airflow-dags, test-data-quality]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dbt
+        run: |
+          pip install dbt-core==${{ env.DBT_VERSION }}
+          pip install dbt-snowflake==1.6.0
+      
+      - name: Deploy dbt models to staging
+        working-directory: dbt
+        run: |
+          dbt deps
+          dbt seed --target staging --profiles-dir ./profiles
+          dbt run --target staging --profiles-dir ./profiles
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER_STAGING }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD_STAGING }}
+          SNOWFLAKE_WAREHOUSE: STAGING_WH
+          SNOWFLAKE_DATABASE: STAGING_DB
+      
+      - name: Deploy Airflow DAGs to staging
+        run: |
+          aws s3 sync dags/ s3://${{ secrets.AIRFLOW_DAGS_BUCKET_STAGING }}/dags/ --delete
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+      
+      - name: Trigger test DAG run
+        run: |
+          python scripts/trigger_airflow_dag.py \
+            --airflow-url ${{ secrets.AIRFLOW_URL_STAGING }} \
+            --dag-id data_pipeline_test \
+            --wait
+        env:
+          AIRFLOW_API_KEY: ${{ secrets.AIRFLOW_API_KEY_STAGING }}
+  
+  deploy-production:
+    needs: [validate-dbt, validate-airflow-dags, test-data-quality]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dbt
+        run: |
+          pip install dbt-core==${{ env.DBT_VERSION }}
+          pip install dbt-snowflake==1.6.0
+      
+      - name: Create backup
+        run: |
+          python scripts/backup_production_tables.py
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER_PROD }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD_PROD }}
+      
+      - name: Deploy dbt models to production
+        working-directory: dbt
+        run: |
+          dbt deps
+          dbt run --target production --profiles-dir ./profiles
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER_PROD }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD_PROD }}
+          SNOWFLAKE_WAREHOUSE: PRODUCTION_WH
+          SNOWFLAKE_DATABASE: PRODUCTION_DB
+      
+      - name: Run production data quality checks
+        working-directory: dbt
+        run: |
+          dbt test --target production --profiles-dir ./profiles
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER_PROD }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD_PROD }}
+      
+      - name: Deploy Airflow DAGs to production
+        run: |
+          aws s3 sync dags/ s3://${{ secrets.AIRFLOW_DAGS_BUCKET_PROD }}/dags/ --delete
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+      
+      - name: Notify deployment
+        run: |
+          python scripts/send_notification.py \
+            --message "Data pipeline deployed to production successfully" \
+            --channel "#data-engineering"
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

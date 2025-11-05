@@ -1,0 +1,81 @@
+2024-11-05T14:45:22.123Z [INFO] Starting workflow run for 'ML Model Deployment Pipeline'
+2024-11-05T14:45:22.456Z [INFO] Trigger: push to main branch
+2024-11-05T14:45:22.789Z [INFO] Commit: b9e4f21 - "Update model architecture"
+
+===== JOB: model-validation =====
+2024-11-05T14:45:25.123Z [INFO] Starting job 'model-validation' on runner 'ubuntu-latest-2'
+2024-11-05T14:45:27.456Z [STEP] actions/checkout@v3
+2024-11-05T14:45:29.789Z [INFO] Checkout completed successfully
+
+2024-11-05T14:45:30.123Z [STEP] Set up Python
+2024-11-05T14:45:31.456Z [INFO] Setting up Python 3.9
+2024-11-05T14:45:35.789Z [INFO] Python 3.9.18 installed successfully
+
+2024-11-05T14:45:36.123Z [STEP] Cache pip dependencies
+2024-11-05T14:45:36.456Z [INFO] Cache key: ubuntu-latest-pip-d7f8e9a2b3c4
+2024-11-05T14:45:36.789Z [WARN] Cache not found, will create new cache
+
+2024-11-05T14:45:37.123Z [STEP] Install dependencies
+2024-11-05T14:45:37.456Z [CMD] pip install -r requirements.txt
+2024-11-05T14:45:39.789Z [INFO] Collecting torch==2.0.1
+2024-11-05T14:45:42.123Z [INFO] Downloading torch-2.0.1-cp39-linux_x86_64.whl (887.5 MB)
+2024-11-05T14:48:15.456Z [INFO] Collecting transformers==4.30.0
+2024-11-05T14:48:18.789Z [INFO] Downloading transformers-4.30.0-py3-none-any.whl (7.2 MB)
+2024-11-05T14:49:23.123Z [INFO] Successfully installed 47 packages
+2024-11-05T14:49:23.456Z [INFO] pip install time: 346 seconds
+
+2024-11-05T14:49:23.789Z [STEP] Run model tests
+2024-11-05T14:49:24.123Z [CMD] pytest tests/test_model.py -v --cov=models
+2024-11-05T14:49:26.456Z [INFO] test_model_loading PASSED
+2024-11-05T14:49:28.789Z [INFO] test_model_inference PASSED
+2024-11-05T14:49:31.123Z [INFO] test_model_accuracy PASSED
+2024-11-05T14:49:32.456Z [INFO] Coverage: 87%
+2024-11-05T14:49:32.789Z [INFO] All tests passed
+
+2024-11-05T14:49:33.123Z [STEP] Validate model metrics
+2024-11-05T14:49:33.456Z [CMD] python scripts/validate_model_metrics.py
+2024-11-05T14:49:35.789Z [INFO] Loading model from models/sentiment-classifier
+2024-11-05T14:49:42.123Z [INFO] Model loaded successfully
+2024-11-05T14:49:42.456Z [INFO] Accuracy: 0.92 (threshold: 0.90) ✓
+2024-11-05T14:49:42.789Z [INFO] F1-Score: 0.91 (threshold: 0.88) ✓
+2024-11-05T14:49:43.123Z [ERROR] Latency: 245ms (threshold: 200ms) ✗
+2024-11-05T14:49:43.456Z [ERROR] Model validation failed: latency exceeds threshold
+2024-11-05T14:49:43.789Z [ERROR] Exit code: 1
+
+2024-11-05T14:49:44.123Z [INFO] Job 'model-validation' failed
+2024-11-05T14:49:44.234Z [ERROR] Workflow failed in model-validation job
+2024-11-05T14:49:44.345Z [INFO] Duration: 4 minutes 19 seconds
+
+===== FAILURE SUMMARY =====
+Failed Job: model-validation
+Failed Step: Validate model metrics
+Exit Code: 1
+Error Type: Model performance validation error
+Root Cause: Model inference latency (245ms) exceeds production threshold (200ms)
+Details:
+  - Accuracy: 0.92 ✓
+  - F1-Score: 0.91 ✓
+  - Latency: 245ms ✗ (22.5% over threshold)
+
+Recommendation: Optimize model inference or adjust latency threshold
+
+===== SUBSEQUENT JOBS SKIPPED =====
+- build-container (skipped due to dependency failure)
+- deploy-staging (skipped due to dependency failure)
+- deploy-production (skipped due to dependency failure)
+
+===== WORKFLOW STATISTICS =====
+Total Duration: 4 minutes 19 seconds
+Jobs Completed: 0/4
+Jobs Failed: 1/4
+Jobs Skipped: 3/4
+Total Cost: $0.087
+Runner Time: 259 seconds
+Time spent downloading dependencies: 346 seconds (133% of total runtime)
+Cache miss impact: +346 seconds (pip dependencies)
+
+===== PERFORMANCE ISSUES DETECTED =====
+1. Cache miss on pip dependencies added 5.8 minutes
+2. Large ML dependencies (torch 887MB) downloaded from scratch
+3. No layer caching for Docker build (skipped due to failure)
+4. Model validation latency suggests need for quantization or optimization

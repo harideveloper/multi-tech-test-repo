@@ -1,0 +1,123 @@
+2024-11-05T11:20:45.678Z [INFO] Starting workflow run for 'Kubernetes Application Deployment'
+2024-11-05T11:20:45.901Z [INFO] Trigger: push to main branch
+2024-11-05T11:20:46.234Z [INFO] Commit: h4j9k12 - "Add rate limiting middleware"
+
+===== JOB: code-quality =====
+2024-11-05T11:20:48.567Z [INFO] Starting job 'code-quality' on runner 'ubuntu-latest-7'
+2024-11-05T11:20:50.890Z [STEP] actions/checkout@v3
+2024-11-05T11:20:53.123Z [INFO] Checkout completed successfully
+
+2024-11-05T11:20:53.456Z [STEP] Set up Go
+2024-11-05T11:20:54.789Z [INFO] Setting up Go 1.21
+2024-11-05T11:20:58.123Z [INFO] Go 1.21.3 installed successfully
+2024-11-05T11:20:58.456Z [INFO] Cache hit for Go modules
+
+2024-11-05T11:20:58.789Z [STEP] Run golangci-lint
+2024-11-05T11:20:59.123Z [INFO] Running golangci-lint with timeout=5m
+2024-11-05T11:21:03.456Z [INFO] Analyzing 47 Go files
+2024-11-05T11:21:15.789Z [WARN] main.go:45:2: ineffassign: ineffectual assignment to err
+2024-11-05T11:21:16.123Z [WARN] handlers/auth.go:78:1: gocyclo: cyclomatic complexity 15 of func validateToken is high (>10)
+2024-11-05T11:21:16.456Z [ERROR] handlers/user.go:123:5: errcheck: Error return value not checked
+2024-11-05T11:21:16.789Z [ERROR] Found 3 issues
+2024-11-05T11:21:17.123Z [ERROR] Exit code: 1
+
+2024-11-05T11:21:17.456Z [INFO] Job 'code-quality' failed
+2024-11-05T11:21:17.567Z [ERROR] Workflow failed in code-quality job
+2024-11-05T11:21:17.678Z [INFO] Duration: 29 seconds
+
+===== FAILURE SUMMARY =====
+Failed Job: code-quality
+Failed Step: Run golangci-lint
+Exit Code: 1
+Error Type: Code quality violations
+
+Linting Issues Found:
+1. handlers/user.go:123:5 (errcheck): Error return value not checked
+   - Severity: HIGH
+   - Impact: Potential unhandled errors in user handler
+   
+2. handlers/auth.go:78:1 (gocyclo): Cyclomatic complexity 15 of func validateToken is high (>10)
+   - Severity: MEDIUM
+   - Impact: Function is too complex, needs refactoring
+   
+3. main.go:45:2 (ineffassign): Ineffectual assignment to err
+   - Severity: LOW
+   - Impact: Dead code that should be removed
+
+Recommendation:
+1. Add proper error handling in handlers/user.go line 123
+2. Refactor validateToken function to reduce complexity
+3. Remove unused assignment in main.go
+
+===== SUBSEQUENT JOBS SKIPPED =====
+- security-scan (skipped due to dependency failure)
+- test (skipped due to dependency failure)
+- build-and-push (skipped due to dependency failure)
+- validate-k8s-manifests (skipped due to dependency failure)
+- deploy-dev (skipped due to dependency failure)
+
+===== WORKFLOW STATISTICS =====
+Total Duration: 29 seconds
+Jobs Completed: 0/6
+Jobs Failed: 1/6
+Jobs Skipped: 5/6
+Total Cost: $0.008
+Runner Time: 29 seconds
+
+===== CODE QUALITY METRICS =====
+Files Analyzed: 47 Go files
+Issues Found: 3 (1 high, 1 medium, 1 low)
+Lines of Code: ~12,400
+Average Complexity: 7.3
+Max Complexity: 15 (validateToken function)
+
+===== EFFICIENCY INSIGHTS =====
+1. Go module cache hit - saved ~45 seconds on dependency download
+2. Linting failed quickly (17 seconds), preventing wasted time on tests and builds
+3. All deployment steps skipped, saving ~15 minutes of runner time
+4. Quick feedback cycle allows developers to fix issues immediately
+
+===== RECOMMENDED FIXES =====
+
+File: handlers/user.go (Line 123)
+Current:
+```go
+db.Delete(&user)
+return c.JSON(200, map[string]string{"message": "deleted"})
+```
+Fixed:
+```go
+if err := db.Delete(&user).Error; err != nil {
+    return c.JSON(500, map[string]string{"error": err.Error()})
+}
+return c.JSON(200, map[string]string{"message": "deleted"})
+```
+
+File: handlers/auth.go (Line 78)
+Suggestion: Break down validateToken function into smaller functions:
+- extractToken()
+- parseToken()
+- validateClaims()
+- checkExpiration()
+
+File: main.go (Line 45)
+Current:
+```go
+err = loadConfig()
+err = initDB()  // This overwrites previous err without checking
+```
+Fixed:
+```go
+if err := loadConfig(); err != nil {
+    log.Fatal(err)
+}
+if err := initDB(); err != nil {
+    log.Fatal(err)
+}
+```
+
+===== PREVENTION TIPS =====
+1. Run golangci-lint locally before committing: `golangci-lint run`
+2. Consider adding pre-commit hooks to catch these issues
+3. Enable IDE integration for real-time linting feedback
+4. Review and update linting rules in .golangci.yml

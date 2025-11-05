@@ -1,0 +1,104 @@
+2024-11-05T16:12:34.567Z [INFO] Starting workflow run for 'Microservices Deployment Pipeline'
+2024-11-05T16:12:34.890Z [INFO] Trigger: push to develop branch
+2024-11-05T16:12:35.123Z [INFO] Commit: c3d8a45 - "Update order service logic"
+
+===== JOB: detect-changes =====
+2024-11-05T16:12:37.456Z [INFO] Starting job 'detect-changes' on runner 'ubuntu-latest-3'
+2024-11-05T16:12:39.789Z [STEP] actions/checkout@v3
+2024-11-05T16:12:42.123Z [INFO] Checkout completed successfully
+
+2024-11-05T16:12:42.456Z [STEP] dorny/paths-filter@v2
+2024-11-05T16:12:43.789Z [INFO] Detecting changed paths
+2024-11-05T16:12:44.123Z [INFO] api-gateway: false
+2024-11-05T16:12:44.456Z [INFO] user-service: false
+2024-11-05T16:12:44.789Z [INFO] order-service: true
+2024-11-05T16:12:45.123Z [INFO] payment-service: false
+2024-11-05T16:12:45.456Z [INFO] notification-service: false
+2024-11-05T16:12:45.789Z [INFO] Job completed successfully
+2024-11-05T16:12:46.123Z [INFO] Duration: 9 seconds
+
+===== JOB: build-api-gateway =====
+2024-11-05T16:12:46.456Z [INFO] Job skipped (condition not met: api-gateway changes not detected)
+
+===== JOB: build-user-service =====
+2024-11-05T16:12:46.789Z [INFO] Job skipped (condition not met: user-service changes not detected)
+
+===== JOB: build-order-service =====
+2024-11-05T16:12:47.123Z [INFO] Starting job 'build-order-service' on runner 'ubuntu-latest-4'
+2024-11-05T16:12:49.456Z [STEP] actions/checkout@v3
+2024-11-05T16:12:51.789Z [INFO] Checkout completed successfully
+
+2024-11-05T16:12:52.123Z [STEP] Set up Java
+2024-11-05T16:12:53.456Z [INFO] Setting up Java 17 (temurin)
+2024-11-05T16:12:57.789Z [INFO] Java installed successfully
+2024-11-05T16:12:58.123Z [INFO] java version "17.0.8"
+
+2024-11-05T16:12:58.456Z [STEP] Build with Maven
+2024-11-05T16:12:58.789Z [CMD] mvn clean package -DskipTests
+2024-11-05T16:13:01.123Z [INFO] [INFO] Scanning for projects...
+2024-11-05T16:13:02.456Z [INFO] [INFO] Building order-service 2.1.0
+2024-11-05T16:13:03.789Z [INFO] Downloading dependencies...
+2024-11-05T16:13:35.123Z [INFO] Downloaded 142 dependencies
+2024-11-05T16:13:37.456Z [INFO] Compiling 87 source files
+2024-11-05T16:14:12.789Z [INFO] Compilation completed
+2024-11-05T16:14:15.123Z [INFO] Building JAR file
+2024-11-05T16:14:18.456Z [INFO] [INFO] BUILD SUCCESS
+2024-11-05T16:14:18.789Z [INFO] Maven build completed in 1 minute 20 seconds
+
+2024-11-05T16:14:19.123Z [STEP] Run tests
+2024-11-05T16:14:19.456Z [CMD] mvn test
+2024-11-05T16:14:21.789Z [INFO] Running test suite
+2024-11-05T16:14:25.123Z [INFO] [INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+2024-11-05T16:14:32.456Z [INFO] [INFO] Tests run: 23, Failures: 1, Errors: 0, Skipped: 0
+2024-11-05T16:14:32.789Z [ERROR] [ERROR] Failures:
+2024-11-05T16:14:33.123Z [ERROR] OrderServiceTest.testCreateOrderWithInvalidPayment:142
+2024-11-05T16:14:33.456Z [ERROR] Expected: <400 BAD_REQUEST>
+2024-11-05T16:14:33.789Z [ERROR] Actual: <500 INTERNAL_SERVER_ERROR>
+2024-11-05T16:14:34.123Z [ERROR] 
+2024-11-05T16:14:34.456Z [ERROR] [INFO] BUILD FAILURE
+2024-11-05T16:14:34.789Z [ERROR] Exit code: 1
+
+2024-11-05T16:14:35.123Z [INFO] Job 'build-order-service' failed
+2024-11-05T16:14:35.234Z [ERROR] Workflow failed in build-order-service job
+2024-11-05T16:14:35.345Z [INFO] Duration: 1 minute 48 seconds
+
+===== FAILURE SUMMARY =====
+Failed Job: build-order-service
+Failed Step: Run tests
+Exit Code: 1
+Error Type: Test failure
+Root Cause: OrderServiceTest.testCreateOrderWithInvalidPayment failed
+Details:
+  - Test expected HTTP 400 (BAD_REQUEST) but got HTTP 500 (INTERNAL_SERVER_ERROR)
+  - This indicates improper error handling for invalid payment scenarios
+  - Service is returning generic error instead of specific validation error
+
+Test Results:
+  - Unit tests: 45 passed, 0 failed
+  - Integration tests: 22 passed, 1 failed
+  - Total: 67 passed, 1 failed
+
+Recommendation: Fix error handling in order service to return proper HTTP 400 status for invalid payment requests
+
+===== SUBSEQUENT JOBS SKIPPED =====
+- deploy-staging (skipped due to dependency failure)
+
+===== WORKFLOW STATISTICS =====
+Total Duration: 1 minute 48 seconds
+Jobs Completed: 1/5
+Jobs Failed: 1/5
+Jobs Skipped: 3/5
+Total Cost: $0.035
+Runner Time: 108 seconds
+Maven dependency download time: 32 seconds
+
+===== EFFICIENCY INSIGHTS =====
+1. Only changed service (order-service) was built - good path filtering
+2. Two services (api-gateway, user-service) correctly skipped
+3. Maven dependency caching could improve download time
+4. Test failure caught before Docker build, saving time
+
+===== CODE QUALITY ISSUES =====
+1. Improper error handling in order service
+2. Missing validation layer for payment inputs
+3. Service returning 500 errors instead of 400 for client errors
