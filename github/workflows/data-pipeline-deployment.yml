@@ -32,6 +32,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-sqlfluff-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-sqlfluff-
+            ${{ runner.os }}-pip-
+      
       - name: Install SQLFluff
         run: pip install sqlfluff==2.3.0
       
@@ -43,6 +52,12 @@ jobs:
   
   validate-dbt:
     runs-on: ubuntu-latest
+    env:
+      DBT_POSTGRES_HOST: localhost
+      DBT_POSTGRES_PORT: 5432
+      DBT_POSTGRES_USER: postgres
+      DBT_POSTGRES_PASS: postgres
+      DBT_POSTGRES_DB: testdb
     services:
       postgres:
         image: postgres:15
@@ -64,6 +79,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-
+            ${{ runner.os }}-pip-
+      
+      - name: Cache dbt packages
+        uses: actions/cache@v3
+        with:
+          path: dbt/dbt_packages
+          key: ${{ runner.os }}-dbt-packages-${{ hashFiles('dbt/packages.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-dbt-packages-
+      
       - name: Install dbt
         run: |
           pip install dbt-core==${{ env.DBT_VERSION }}
@@ -76,32 +108,14 @@ jobs:
       - name: Compile dbt models
         working-directory: dbt
         run: dbt compile --profiles-dir ./profiles
-        env:
-          DBT_POSTGRES_HOST: localhost
-          DBT_POSTGRES_PORT: 5432
-          DBT_POSTGRES_USER: postgres
-          DBT_POSTGRES_PASS: postgres
-          DBT_POSTGRES_DB: testdb
       
       - name: Run dbt tests
         working-directory: dbt
         run: dbt test --profiles-dir ./profiles
-        env:
-          DBT_POSTGRES_HOST: localhost
-          DBT_POSTGRES_PORT: 5432
-          DBT_POSTGRES_USER: postgres
-          DBT_POSTGRES_PASS: postgres
-          DBT_POSTGRES_DB: testdb
       
       - name: Generate dbt docs
         working-directory: dbt
         run: dbt docs generate --profiles-dir ./profiles
-        env:
-          DBT_POSTGRES_HOST: localhost
-          DBT_POSTGRES_PORT: 5432
-          DBT_POSTGRES_USER: postgres
-          DBT_POSTGRES_PASS: postgres
-          DBT_POSTGRES_DB: testdb
       
       - name: Upload dbt docs
         uses: actions/upload-artifact@v3
@@ -118,6 +132,15 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-airflow-${{ env.AIRFLOW_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-airflow-${{ env.AIRFLOW_VERSION }}-
+            ${{ runner.os }}-pip-
       
       - name: Install Airflow
         run: |
@@ -143,6 +166,8 @@ jobs:
   test-data-quality:
     needs: [validate-sql, validate-dbt]
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
     services:
       postgres:
         image: postgres:15
@@ -164,6 +189,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ge-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-ge-
+            ${{ runner.os }}-pip-
+      
       - name: Install dependencies
         run: |
           pip install great-expectations==0.17.0
@@ -172,14 +206,10 @@ jobs:
       - name: Load test data
         run: |
           python scripts/load_test_data.py
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
       
       - name: Run Great Expectations
         run: |
           great_expectations checkpoint run data_quality_checkpoint
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
   
   deploy-staging:
     needs: [validate-dbt, validate-airflow-dags, test-data-quality]
@@ -194,10 +224,34 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-
+            ${{ runner.os }}-pip-
+      
+      - name: Cache dbt packages
+        uses: actions/cache@v3
+        with:
+          path: dbt/dbt_packages
+          key: ${{ runner.os }}-dbt-packages-${{ hashFiles('dbt/packages.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-dbt-packages-
+      
       - name: Install dbt
         run: |
           pip install dbt-core==${{ env.DBT_VERSION }}
           pip install dbt-snowflake==1.6.0
+      
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
       
       - name: Deploy dbt models to staging
         working-directory: dbt
@@ -215,10 +269,6 @@ jobs:
       - name: Deploy Airflow DAGs to staging
         run: |
           aws s3 sync dags/ s3://${{ secrets.AIRFLOW_DAGS_BUCKET_STAGING }}/dags/ --delete
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
       
       - name: Trigger test DAG run
         run: |
@@ -242,10 +292,34 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-dbt-${{ env.DBT_VERSION }}-
+            ${{ runner.os }}-pip-
+      
+      - name: Cache dbt packages
+        uses: actions/cache@v3
+        with:
+          path: dbt/dbt_packages
+          key: ${{ runner.os }}-dbt-packages-${{ hashFiles('dbt/packages.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-dbt-packages-
+      
       - name: Install dbt
         run: |
           pip install dbt-core==${{ env.DBT_VERSION }}
           pip install dbt-snowflake==1.6.0
+      
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
       
       - name: Create backup
         run: |
@@ -279,10 +353,6 @@ jobs:
       - name: Deploy Airflow DAGs to production
         run: |
           aws s3 sync dags/ s3://${{ secrets.AIRFLOW_DAGS_BUCKET_PROD }}/dags/ --delete
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-1
       
       - name: Notify deployment
         run: |
