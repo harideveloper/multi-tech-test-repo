@@ -51,15 +51,26 @@ jobs:
       
       - name: Run model tests
         run: |
-          pytest tests/test_model.py -v --cov=models
+          pytest tests/test_model.py -v --cov=models --cov-report=xml --cov-report=html
       
       - name: Validate model metrics
         run: |
-          python scripts/validate_model_metrics.py --model-path models/${{ env.MODEL_NAME }}
+          python scripts/validate_model_metrics.py --model-path models/${{ env.MODEL_NAME }} --output-file validation_results.json
       
       - name: Check model size
         run: |
-          python scripts/check_model_size.py --max-size 500MB
+          python scripts/check_model_size.py --max-size 500MB --output-file size_check.json
+      
+      - name: Upload test results and validation artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: model-validation-results
+          path: |
+            coverage.xml
+            htmlcov/
+            validation_results.json
+            size_check.json
   
   build-container:
     needs: model-validation
@@ -107,6 +118,12 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v3
+        with:
+          sparse-checkout: |
+            deployment/
+            tests/smoke_test.py
+            scripts/monitor_deployment.py
+          sparse-checkout-cone-mode: false
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -115,11 +132,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
       
       - name: Update kubeconfig
         run: |
@@ -147,6 +163,12 @@ jobs:
     if: github.event.inputs.environment == 'production' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v3
+        with:
+          sparse-checkout: |
+            deployment/
+            tests/smoke_test.py
+            scripts/monitor_deployment.py
+          sparse-checkout-cone-mode: false
       
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -155,35 +177,53 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
       
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --name ml-production-cluster --region us-east-1
       
       - name: Blue-Green Deployment
+        id: deploy
         run: |
           kubectl apply -f deployment/k8s/production/deployment-green.yaml
           kubectl rollout status deployment/${{ env.MODEL_NAME }}-green -n production
       
       - name: Run production smoke tests
+        id: smoke-test
         run: |
           python tests/smoke_test.py --endpoint https://api.example.com/predict/canary
       
       - name: Switch traffic to green
+        id: switch-traffic
+        if: steps.deploy.outcome == 'success' && steps.smoke-test.outcome == 'success'
         run: |
           kubectl patch service ${{ env.MODEL_NAME }} -n production \
             -p '{"spec":{"selector":{"version":"green"}}}'
       
       - name: Monitor production metrics
+        id: monitor
+        if: steps.switch-traffic.outcome == 'success'
         run: |
           python scripts/monitor_deployment.py --duration 600 --environment production
       
       - name: Cleanup old deployment
-        if: success()
+        if: steps.monitor.outcome == 'success'
         run: |
           kubectl delete deployment ${{ env.MODEL_NAME }}-blue -n production
+      
+      - name: Rollback on failure
+        if: failure() && (steps.deploy.outcome == 'failure' || steps.smoke-test.outcome == 'failure' || steps.monitor.outcome == 'failure')
+        run: |
+          echo "Deployment failed, initiating rollback..."
+          # Switch traffic back to blue if green deployment failed after traffic switch
+          if [[ "${{ steps.switch-traffic.outcome }}" == "success" ]]; then
+            kubectl patch service ${{ env.MODEL_NAME }} -n production \
+              -p '{"spec":{"selector":{"version":"blue"}}}'
+          fi
+          # Remove failed green deployment
+          kubectl delete deployment ${{ env.MODEL_NAME }}-green -n production --ignore-not-found=true
+          echo "Rollback completed"
