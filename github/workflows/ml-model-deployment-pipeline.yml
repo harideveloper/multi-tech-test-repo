@@ -24,6 +24,7 @@ env:
   PYTHON_VERSION: '3.9'
   REGISTRY: ghcr.io
   MODEL_NAME: sentiment-classifier
+  AWS_REGION: us-east-1
   
 jobs:
   model-validation:
@@ -113,17 +114,27 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Cache kubectl binary
+        uses: actions/cache@v3
+        with:
+          path: /usr/local/bin/kubectl
+          key: kubectl-${{ runner.os }}-${{ hashFiles('**/kubectl-version.txt') }}
+          restore-keys: |
+            kubectl-${{ runner.os }}-
       
       - name: Install kubectl
         run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+          if [ ! -f /usr/local/bin/kubectl ]; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+          fi
       
       - name: Update kubeconfig
         run: |
-          aws eks update-kubeconfig --name ml-staging-cluster --region us-east-1
+          aws eks update-kubeconfig --name ml-staging-cluster --region ${{ env.AWS_REGION }}
       
       - name: Deploy to staging
         run: |
@@ -153,17 +164,27 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Cache kubectl binary
+        uses: actions/cache@v3
+        with:
+          path: /usr/local/bin/kubectl
+          key: kubectl-${{ runner.os }}-${{ hashFiles('**/kubectl-version.txt') }}
+          restore-keys: |
+            kubectl-${{ runner.os }}-
       
       - name: Install kubectl
         run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+          if [ ! -f /usr/local/bin/kubectl ]; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+          fi
       
       - name: Update kubeconfig
         run: |
-          aws eks update-kubeconfig --name ml-production-cluster --region us-east-1
+          aws eks update-kubeconfig --name ml-production-cluster --region ${{ env.AWS_REGION }}
       
       - name: Blue-Green Deployment
         run: |
