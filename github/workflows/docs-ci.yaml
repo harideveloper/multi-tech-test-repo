@@ -12,6 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
       - name: Lint markdown
         run: npx markdownlint '**/*.md'
       
@@ -19,4 +25,4 @@ jobs:
         run: npx cspell '**/*.md'
       
       - name: Validate links
-        run: npx markdown-link-check README.md
+        run: npx markdown-link-check '**/*.md'
